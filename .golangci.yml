@@ -1,0 +1,11 @@
+version: "2"
+
+linters:
+  enable:
+    - forbidigo
+  settings:
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: Use logger instead.
+      analyze-types: true
