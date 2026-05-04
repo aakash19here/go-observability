@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -24,25 +25,39 @@ func main() {
 	os.Exit(status)
 }
 
+func initializeLogger() *log.Logger {
+	logFile := os.Getenv("LINKO_LOG_FILE")
+
+	var logger *log.Logger
+
+	if logFile == "" {
+		logger = log.New(os.Stderr, "", log.LstdFlags)
+		return logger
+	}
+
+	file, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+
+	if err != nil {
+		log.Fatalf("failed to open log file: %v", err)
+	}
+
+	multiWriter := io.MultiWriter(os.Stderr, file)
+
+	logger = log.New(multiWriter, "", log.LstdFlags)
+
+	return logger
+}
+
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
+	logger := initializeLogger()
 
-	stdLogger := log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
-	accesslog, err := os.OpenFile("linko.access.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
-
-	if err != nil {
-		stdLogger.Printf("failed to open access log: %v\n", err)
-		return 1
-	}
-
-	accessLogger := log.New(accesslog, "INFO: ", log.LstdFlags)
-
-	st, err := store.New(dataDir, stdLogger)
+	st, err := store.New(dataDir, logger)
 
 	if err != nil {
-		stdLogger.Printf("failed to create store: %v", err)
+		logger.Printf("failed to create store: %v", err)
 		return 1
 	}
-	s := newServer(*st, httpPort, accessLogger, cancel)
+	s := newServer(*st, httpPort, logger, cancel)
 	var serverErr error
 	go func() {
 		serverErr = s.start()
@@ -53,14 +68,14 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	stdLogger.Println("Linko is shutting down")
+	logger.Println("Linko is shutting down")
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		stdLogger.Printf("failed to shutdown server: %v", err)
+		logger.Printf("failed to shutdown server: %v", err)
 		return 1
 	}
 	if serverErr != nil {
-		stdLogger.Printf("server error: %v", serverErr)
+		logger.Printf("server error: %v", serverErr)
 		return 1
 	}
 
