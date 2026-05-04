@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -25,31 +27,36 @@ func main() {
 	os.Exit(status)
 }
 
-func initializeLogger() *log.Logger {
-	logFile := os.Getenv("LINKO_LOG_FILE")
-
+func initializeLogger(logFile string) (*log.Logger, error) {
 	var logger *log.Logger
 
 	if logFile == "" {
 		logger = log.New(os.Stderr, "", log.LstdFlags)
-		return logger
+		return logger, nil
 	}
 
 	file, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 
+	bufferedFile := bufio.NewWriterSize(file, 8192)
+
 	if err != nil {
-		log.Fatalf("failed to open log file: %v", err)
+		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
 
-	multiWriter := io.MultiWriter(os.Stderr, file)
+	multiWriter := io.MultiWriter(os.Stderr, bufferedFile)
 
 	logger = log.New(multiWriter, "", log.LstdFlags)
 
-	return logger
+	return logger, nil
 }
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
-	logger := initializeLogger()
+	logger, err := initializeLogger(os.Getenv("LINKO_LOG_FILE"))
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
+		return 1
+	}
 
 	st, err := store.New(dataDir, logger)
 
