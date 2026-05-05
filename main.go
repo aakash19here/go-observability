@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -29,11 +29,11 @@ func main() {
 
 type closeFunc func() error
 
-func initializeLogger(logFile string) (*log.Logger, closeFunc, error) {
-	var logger *log.Logger
+func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
+	var logger *slog.Logger
 
 	if logFile == "" {
-		logger = log.New(os.Stderr, "", log.LstdFlags)
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 		return logger, nil, nil
 	}
@@ -48,7 +48,7 @@ func initializeLogger(logFile string) (*log.Logger, closeFunc, error) {
 
 	multiWriter := io.MultiWriter(os.Stderr, bufferedFile)
 
-	logger = log.New(multiWriter, "", log.LstdFlags)
+	logger = slog.New(slog.NewTextHandler(multiWriter, nil))
 
 	return logger, func() error {
 		err := bufferedFile.Flush()
@@ -79,7 +79,7 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	st, err := store.New(dataDir, logger)
 
 	if err != nil {
-		logger.Printf("failed to create store: %v", err)
+		logger.Info(fmt.Sprintf("failed to create store: %v", err))
 		return 1
 	}
 	s := newServer(*st, httpPort, logger, cancel)
@@ -102,14 +102,14 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 		}
 	}()
 
-	logger.Println("Linko is shutting down")
+	logger.Info("Linko is shutting down")
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		logger.Printf("failed to shutdown server: %v", err)
+		logger.Info(fmt.Sprintf("failed to shutdown server: %v", err))
 		return 1
 	}
 	if serverErr != nil {
-		logger.Printf("server error: %v", serverErr)
+		logger.Info(fmt.Sprintf("server error: %v", serverErr))
 		return 1
 	}
 
