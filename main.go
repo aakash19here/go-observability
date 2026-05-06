@@ -12,8 +12,15 @@ import (
 	"syscall"
 	"time"
 
+	pkgerr "github.com/pkg/errors"
+
 	"boot.dev/linko/internal/store"
 )
+
+type stackTracer interface {
+	error
+	StackTrace() pkgerr.StackTrace
+}
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -32,6 +39,7 @@ type closeFunc func() error
 func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 
 	replaceAttr := func(groups []string, a slog.Attr) slog.Attr {
+
 		if a.Key == "error" {
 			err, ok := a.Value.Any().(error)
 
@@ -39,7 +47,15 @@ func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 				return a
 			}
 
-			return slog.String("error", fmt.Sprintf("%+v", err))
+			if stackErr, ok := errors.AsType[stackTracer](err); ok {
+				return slog.GroupAttrs("error", slog.Attr{
+					Key:   "message",
+					Value: slog.StringValue(stackErr.Error()),
+				}, slog.Attr{
+					Key:   "stack_trace",
+					Value: slog.StringValue(fmt.Sprintf("%+v", stackErr.StackTrace())),
+				})
+			}
 		}
 		return a
 	}
