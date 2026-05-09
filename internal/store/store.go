@@ -70,18 +70,20 @@ const maxURLs = 10
 
 func (s *Store) List(ctx context.Context) ([]ShortURL, error) {
 	ch := make(chan ShortURL)
+	var errs []error
 	go s.walk(ctx, ch)
 	var urls []ShortURL
 	for e := range ch {
 		if e.Err != nil {
-			return urls, e.Err
+			errs = append(errs, e.Err)
+			continue
 		}
 		urls = append(urls, e)
 		if len(urls) >= maxURLs {
 			break
 		}
 	}
-	return urls, nil
+	return urls, errors.Join(errs...)
 }
 
 func (s *Store) walk(ctx context.Context, ch chan<- ShortURL) {
